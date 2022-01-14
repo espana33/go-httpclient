@@ -10,116 +10,67 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/espana33/go-httpclient/core"
+	"github.com/espana33/go-httpclient/gohttp_mock"
+	"github.com/espana33/go-httpclient/gomime"
 )
 
 const (
 	defaultMaxIdleConnections = 5
-	defaultResponseTimeout = 5 * time.Second
-	defaultConnectionTimeout = 1 * time.Second
+	defaultResponseTimeout    = 5 * time.Second
+	defaultConnectionTimeout  = 1 * time.Second
 )
 
-//Do function that make GET, POST, PATCH, DELETE
-func (c *httpClient) do(httpMethod string, url string, headers http.Header, body interface{}) (*Response, error){
-	
-
+func (c *httpClient) do(method string, url string, headers http.Header, body interface{}) (*core.Response, error) {
 	fullHeaders := c.getRequestHeaders(headers)
 
-	requestBody, err:= c.getRequestBody(fullHeaders.Get("Content-Type"), body)
-
-	if err != nil{
-		return nil, err
-	}	
-
-	request, err := http.NewRequest(httpMethod, url, bytes.NewBuffer(requestBody))
-
-
-	if err != nil{
-		return nil, errors.New("Unable to create a new request")
-	}
-	
-	request.Header =  fullHeaders
-
-	client:= c.getHttpClient()
-
-	response, err := client.Do(request)
-
-	if err != nil{
+	requestBody, err := c.getRequestBody(fullHeaders.Get("Content-Type"), body)
+	if err != nil {
 		return nil, err
 	}
-	
+
+	request, err := http.NewRequest(method, url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, errors.New("unable to create a new request")
+	}
+
+	request.Header = fullHeaders
+
+	response, err := c.getHttpClient().Do(request)
+	if err != nil {
+		return nil, err
+	}
+
 	defer response.Body.Close()
 	responseBody, err := ioutil.ReadAll(response.Body)
-
-	if err != nil{
+	if err != nil {
 		return nil, err
-	}	
-
-	finalResponse := Response{
-		status: response.Status,
-		statusCode: response.StatusCode,
-		headers: response.Header,
-		body: responseBody,
 	}
 
+	finalResponse := core.Response{
+		Status:     response.Status,
+		StatusCode: response.StatusCode,
+		Headers:    response.Header,
+		Body:       responseBody,
+	}
 	return &finalResponse, nil
-
 }
 
-//Returns the Request Headers
-func (c *httpClient) getRequestHeaders(requestHeaders http.Header) http.Header{
-	result:= make(http.Header)
-
-	//Add common headers to the request
-	for header, value := range c.builder.headers{
-		if len(value) > 0{
-			result.Set(header,value[0])
-		}
-		
+func (c *httpClient) getHttpClient() core.HttpClient {
+	if gohttp_mock.MockupServer.IsEnabled() {
+		return gohttp_mock.MockupServer.GetMockedClient()
 	}
 
-	//Add custom headers to the request
-	for header, value := range requestHeaders{
-		if len(value) > 0{
-			result.Set(header,value[0])
-		}
-		
-	}	
-
-	return result
-
-}
-
-//Get the request Body
-func (c *httpClient) getRequestBody(contentType string, body interface{}) ([]byte, error){
-	if body == nil{
-		return nil, nil
-	}
-
-	switch strings.ToLower(contentType){
-	case "application/json":
-		return json.Marshal(body)
-	case "application/xml":
-		return xml.Marshal(body)	
-	
-	default:
-		return json.Marshal(body)
-	}
-	
-}
-
-//Gets the HTTP client
-func (c *httpClient) getHttpClient() *http.Client{
-
-	//if c.client != nil{
-	//	return c.client
-	//}
-
-	//To make this method concurrent safe
 	c.clientOnce.Do(func() {
+		if c.builder.client != nil {
+			c.client = c.builder.client
+			return
+		}
 		c.client = &http.Client{
 			Timeout: c.getConnectionTimeout() + c.getResponseTimeout(),
 			Transport: &http.Transport{
-				MaxIdleConnsPerHost: c.getMaxIdleConnections(),
+				MaxIdleConnsPerHost:   c.getMaxIdleConnections(),
 				ResponseHeaderTimeout: c.getResponseTimeout(),
 				DialContext: (&net.Dialer{
 					Timeout: c.getConnectionTimeout(),
@@ -127,37 +78,50 @@ func (c *httpClient) getHttpClient() *http.Client{
 			},
 		}
 	})
-
-
 	return c.client
 }
 
-func (c *httpClient) getMaxIdleConnections() int{
-	if c.builder.maxIdleConnections > 0{
+func (c *httpClient) getMaxIdleConnections() int {
+	if c.builder.maxIdleConnections > 0 {
 		return c.builder.maxIdleConnections
 	}
-
 	return defaultMaxIdleConnections
 }
 
-func (c *httpClient) getResponseTimeout() time.Duration{
-	if c.builder.responseTimeout > 0{
+func (c *httpClient) getResponseTimeout() time.Duration {
+	if c.builder.responseTimeout > 0 {
 		return c.builder.responseTimeout
 	}
-	if c.builder.disableTimeouts{
+	if c.builder.disableTimeouts {
 		return 0
 	}
-
-	return defaultResponseTimeout	
+	return defaultResponseTimeout
 }
 
-func (c *httpClient) getConnectionTimeout() time.Duration{
-	if c.builder.connectionTimeout > 0{
+func (c *httpClient) getConnectionTimeout() time.Duration {
+	if c.builder.connectionTimeout > 0 {
 		return c.builder.connectionTimeout
 	}
-
-	if c.builder.disableTimeouts{
+	if c.builder.disableTimeouts {
 		return 0
-	}	
+	}
 	return defaultConnectionTimeout
 }
+
+func (c *httpClient) getRequestBody(contentType string, body interface{}) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+
+	switch strings.ToLower(contentType) {
+	case gomime.ContentTypeJson:
+		return json.Marshal(body)
+
+	case gomime.ContentTypeXml:
+		return xml.Marshal(body)
+
+	default:
+		return json.Marshal(body)
+	}
+}
+
