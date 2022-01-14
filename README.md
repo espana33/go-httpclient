@@ -1,3 +1,5 @@
+All credits of this library to federicoleon, the author. 
+
 # Go HTTP Client
 
 A production-ready HTTP client in Go with lots of useful features and using nothing more than the standard library of the language.
