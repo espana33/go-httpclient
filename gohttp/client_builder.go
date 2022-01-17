@@ -74,4 +74,3 @@ func (c *clientBuilder) SetUserAgent(userAgent string) ClientBuilder {
 	c.userAgent = userAgent
 	return c
 }
-

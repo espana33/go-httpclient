@@ -24,3 +24,7 @@ func (r *Response) UnmarshalJson(target interface{}) error {
 	return json.Unmarshal(r.Bytes(), target)
 }
 
+func (r *Response) Header() http.Header {
+	return r.Headers
+}
+
